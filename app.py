@@ -31,28 +31,22 @@ if DATE_COL not in df.columns or SLOT_COL not in df.columns:
     st.error(f"Ik mis kolommen. Vereist: '{DATE_COL}' en '{SLOT_COL}'.")
     st.stop()
 
-# hulpkolom: datum als dd-mm-jjjj
 df["_datum_dag"] = df[DATE_COL].apply(norm_date_dmy)
 
-# lijst met beschikbare datums (alleen datums die echt in je CSV zitten)
 available_dates = sorted([d for d in df["_datum_dag"].unique().tolist() if d])
 if not available_dates:
     st.error("Geen geldige datums gevonden in de CSV.")
     st.stop()
 
-# session state defaults
+DEFAULT_DATE = available_dates[0]
+
+# session defaults
 if "zoekterm" not in st.session_state:
     st.session_state.zoekterm = ""
 if "gekozen_datum" not in st.session_state:
-    st.session_state.gekozen_datum = available_dates[0]
+    st.session_state.gekozen_datum = DEFAULT_DATE
 if "gekozen_tijdsvak" not in st.session_state:
     st.session_state.gekozen_tijdsvak = ""
-
-def reset_naar_schema():
-    st.session_state.zoekterm = ""
-    st.session_state.gekozen_datum = available_dates[0]
-    st.session_state.gekozen_tijdsvak = ""
-    st.rerun()
 
 st.title("Top 2000 – zoekapp")
 
@@ -60,17 +54,18 @@ top_left, top_right = st.columns([6, 1])
 with top_left:
     st.caption("Zoeken is los van datum/tijdvak. Klik Reset om terug te gaan naar Datum + Tijdsvak.")
 with top_right:
-    st.button("Reset", on_click=reset_naar_schema)
+    if st.button("Reset"):
+        st.session_state.zoekterm = ""
+        st.session_state.gekozen_datum = DEFAULT_DATE
+        st.session_state.gekozen_tijdsvak = ""
 
 st.caption(f"Bronbestand: {CSV_FILE}")
 
-# zoekveld
 st.text_input("Zoek (alles doorzoekbaar)", key="zoekterm")
 
-# als er een zoekterm is: toon alleen zoekresultaten (geen datum/tijdvak filtering)
 if st.session_state.zoekterm.strip():
+    # globaal zoeken
     resultaat = df.copy()
-
     term = st.session_state.zoekterm.lower()
     mask = pd.Series(False, index=resultaat.index)
     for col in resultaat.columns:
@@ -80,7 +75,7 @@ if st.session_state.zoekterm.strip():
     resultaat = resultaat[mask].copy()
 
 else:
-    # datum kiezen uit beschikbare datums (altijd raak)
+    # datum kiezen uit beschikbare datums
     gekozen_datum = st.selectbox(
         "Datum",
         available_dates,
