@@ -41,7 +41,6 @@ if DATE_COL not in df.columns or SLOT_COL not in df.columns:
 
 df["_datum_dag"] = df[DATE_COL].apply(norm_date_str)
 
-# beschikbare datums uit CSV bepalen
 available_dmy = sorted([d for d in df["_datum_dag"].unique().tolist() if d])
 available_dates = [to_date_obj(d) for d in available_dmy]
 available_dates = [d for d in available_dates if d]
@@ -50,30 +49,41 @@ if not available_dates:
     st.error("Geen geldige datums gevonden in de CSV.")
     st.stop()
 
-# standaarddatum = eerste datum in je data (of pak de laatste als je dat liever hebt)
-DEFAULT_DATE = min(available_dates)   # of: max(available_dates)
+DEFAULT_DATE = min(available_dates)
+
+# --- Session state defaults ---
+if "gekozen_datum" not in st.session_state:
+    st.session_state.gekozen_datum = DEFAULT_DATE
+if "zoekterm" not in st.session_state:
+    st.session_state.zoekterm = ""
+if "tijdsvak" not in st.session_state:
+    st.session_state.tijdsvak = None
+
+def reset_app():
+    st.session_state.gekozen_datum = DEFAULT_DATE
+    st.session_state.zoekterm = ""
+    st.session_state.tijdsvak = None
+    st.rerun()
 
 st.title("Top 2000 – zoekapp")
+
+top_left, top_right = st.columns([6, 1])
+with top_left:
+    st.caption("Tip: gebruik Reset om weer terug te gaan naar Datum + Tijdsvak.")
+with top_right:
+    st.button("Reset (F5)", on_click=reset_app)
 
 col1, col2, col3 = st.columns([1.2, 2.0, 1.2])
 
 with col1:
-    gekozen_datum = st.date_input("Datum", value=DEFAULT_DATE)
+    gekozen_datum = st.date_input("Datum", value=st.session_state.gekozen_datum, key="gekozen_datum")
 
 with col3:
     st.caption(f"Bronbestand: {CSV_FILE}")
 
-zoek_col, wis_col = st.columns([5, 1])
-with zoek_col:
-    zoekterm = st.text_input("Zoek (alles doorzoekbaar)", "")
-with wis_col:
-    wis = st.button("Wis")
+zoekterm = st.text_input("Zoek (alles doorzoekbaar)", key="zoekterm")
 
-if wis:
-    st.session_state.clear()
-    st.rerun()
-
-# als er een zoekterm is: geen datum/tijdvak filter
+# ALS er een zoekterm is: toon zoekresultaten over alles + melding + reset knop bovenin
 if zoekterm.strip():
     resultaat = df.copy()
 
@@ -84,15 +94,17 @@ else:
     tijdsvakken = sorted([x for x in df_dag[SLOT_COL].unique().tolist() if str(x).strip()])
 
     if tijdsvakken:
-        gekozen_tijdsvak = st.selectbox("Tijdsvak", tijdsvakken)
+        default_index = 0
+        if st.session_state.tijdsvak in tijdsvakken:
+            default_index = tijdsvakken.index(st.session_state.tijdsvak)
+
+        gekozen_tijdsvak = st.selectbox("Tijdsvak", tijdsvakken, index=default_index, key="tijdsvak")
         resultaat = df_dag[df_dag[SLOT_COL].astype(str).str.strip() == str(gekozen_tijdsvak).strip()].copy()
     else:
         st.warning("Geen tijdsvakken gevonden voor deze datum.")
-        if len(available_dates) > 0:
-            st.info(f"Eerste datum met data: {DEFAULT_DATE.strftime('%d-%m-%Y')}")
         resultaat = df_dag.iloc[0:0].copy()
 
-# zoekfilter (bovenop alles)
+# zoekfilter toepassen (alleen als zoekterm ingevuld)
 if zoekterm.strip():
     term = zoekterm.lower()
     mask = pd.Series(False, index=resultaat.index)
