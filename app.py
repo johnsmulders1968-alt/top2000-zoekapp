@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 
 st.set_page_config(page_title="Top 2000 zoekapp", layout="wide")
 
@@ -16,74 +16,117 @@ def load_data():
     df = pd.read_csv(path, sep=CSV_SEP, dtype=str, keep_default_na=False).fillna("")
     return df
 
-def parse_datetime_from_columns(df, dt_col, date_col, time_col):
-    df = df.copy()
+def norm_date_str(s: str) -> str:
+    s = str(s).strip()
+    if not s:
+        return ""
+    # accepteer "25-12-2025 00:00" en "25-12-2025"
+    try:
+        dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+        if pd.isna(dt):
+            return s
+        return dt.strftime("%d-%m-%Y")
+    except Exception:
+        return s
 
-    if dt_col and dt_col != "(geen)":
-        df["_dt"] = pd.to_datetime(df[dt_col], errors="coerce", dayfirst=True)
-        return df
+def parse_tijdsvak_start_end(tijdsvak: str):
+    # verwacht iets als "20.00 - 21.00" of "20:00 - 21:00"
+    tv = str(tijdsvak).strip()
+    if not tv:
+        return None, None
+    tv = tv.replace("–", "-").replace("—", "-")
+    parts = [p.strip() for p in tv.split("-")]
+    if len(parts) < 2:
+        return None, None
+    start_s = parts[0].replace(".", ":")
+    end_s = parts[1].replace(".", ":")
+    try:
+        start_t = pd.to_datetime(start_s, errors="coerce").to_pydatetime().time()
+        end_t = pd.to_datetime(end_s, errors="coerce").to_pydatetime().time()
+        return start_t, end_t
+    except Exception:
+        return None, None
 
-    if date_col and time_col and date_col != "(geen)" and time_col != "(geen)":
-        combo = (df[date_col].astype(str).str.strip() + " " + df[time_col].astype(str).str.strip()).str.strip()
-        df["_dt"] = pd.to_datetime(combo, errors="coerce", dayfirst=True)
-        return df
-
-    df["_dt"] = pd.NaT
-    return df
+def format_tijdsvak_from_time(t: time):
+    # maakt "HH.00 - HH+1.00"
+    h = int(t.hour)
+    start = f"{h:02d}.00"
+    end = f"{(h + 1) % 24:02d}.00"
+    return f"{start} - {end}"
 
 df = load_data()
 
+# kolommen (pas aan als jouw CSV anders heet)
+DATE_COL = "datum"
+SLOT_COL = "tijdsvak"
+
+if DATE_COL not in df.columns or SLOT_COL not in df.columns:
+    st.error(f"Ik mis kolommen. Vereist: '{DATE_COL}' en '{SLOT_COL}'.")
+    st.stop()
+
+# extra kolom voor datum (alleen dag, als tekst)
+df["_datum_dag"] = df[DATE_COL].apply(norm_date_str)
+
 st.title("Top 2000 – zoekapp")
 
-# bediening
-col1, col2, col3 = st.columns([1.1, 1.1, 2.0])
+col1, col2, col3 = st.columns([1.2, 1.2, 2.0])
+
 with col1:
-    modus = st.radio("Weergave", ["Zoeken", "Komend uur"], horizontal=True)
+    modus = st.radio("Weergave", ["Zoeken", "Kies tijdsvak", "Komend uur"], horizontal=True)
+
 with col2:
     gekozen_datum = st.date_input("Datum", value=date.today())
     gekozen_tijd = st.time_input("Tijd", value=datetime.now().time().replace(second=0, microsecond=0))
+
 with col3:
     st.caption(f"Bronbestand: {CSV_FILE}")
 
-# kolomkeuze in sidebar
-st.sidebar.header("Datum/tijd instellingen")
-
-st.sidebar.caption("Kolommen in je CSV:")
-st.sidebar.write(list(df.columns))
-
-options = ["(geen)"] + list(df.columns)
-
-dt_col = st.sidebar.selectbox("1 kolom met datum+tijd (optioneel)", options, index=0)
-
-date_col = st.sidebar.selectbox("Datum-kolom (als je geen datum+tijd kolom hebt)", options, index=0)
-time_col = st.sidebar.selectbox("Tijd-kolom (als je geen datum+tijd kolom hebt)", options, index=0)
-
-df = parse_datetime_from_columns(df, dt_col, date_col, time_col)
-
 zoekterm = st.text_input("Zoek (alles doorzoekbaar)", "")
+
+# datumfilter (op tekstdag)
+gekozen_datum_str = gekozen_datum.strftime("%d-%m-%Y")
+df_dag = df[df["_datum_dag"] == gekozen_datum_str].copy()
+
+# tijdsvak selectie (op tekst)
+tijdsvakken = sorted([x for x in df_dag[SLOT_COL].unique().tolist() if str(x).strip()])
+
+gekozen_tijdsvak = None
+
+if modus == "Kies tijdsvak":
+    if not tijdsvakken:
+        st.warning("Geen tijdsvakken gevonden voor deze datum.")
+    else:
+        gekozen_tijdsvak = st.selectbox("Tijdsvak", tijdsvakken)
+
+if modus == "Komend uur":
+    if not tijdsvakken:
+        st.warning("Geen tijdsvakken gevonden voor deze datum.")
+    else:
+        target = format_tijdsvak_from_time(gekozen_tijd)
+        # probeer exacte match, anders fuzzy: tijdsvakken die met startuur beginnen
+        if target in tijdsvakken:
+            gekozen_tijdsvak = target
+        else:
+            start_prefix = f"{int(gekozen_tijd.hour):02d}."
+            candidates = [tv for tv in tijdsvakken if tv.strip().startswith(start_prefix)]
+            gekozen_tijdsvak = candidates[0] if candidates else None
 
 resultaat = df.copy()
 
-# filter: komend uur
-if modus == "Komend uur":
-    if resultaat["_dt"].isna().all():
-        st.error(
-            "Ik kan 'Komend uur' niet tonen omdat ik geen geldige datum/tijd kan maken.\n\n"
-            "Kies in de sidebar óf een kolom met datum+tijd, óf een datum-kolom + tijd-kolom."
-        )
-        st.stop()
+# pas datumfilter toe voor tijdsvak-modi
+if modus in ["Kies tijdsvak", "Komend uur"]:
+    resultaat = df_dag
+    if gekozen_tijdsvak:
+        resultaat = resultaat[resultaat[SLOT_COL].astype(str).str.strip() == str(gekozen_tijdsvak).strip()].copy()
+    else:
+        resultaat = resultaat.iloc[0:0].copy()
 
-    start_dt = datetime.combine(gekozen_datum, gekozen_tijd)
-    end_dt = start_dt + timedelta(hours=1)
-
-    resultaat = resultaat[(resultaat["_dt"] >= start_dt) & (resultaat["_dt"] < end_dt)].copy()
-
-# filter: zoekterm
+# zoekfilter (bovenop alles)
 if zoekterm.strip():
     term = zoekterm.lower()
     mask = pd.Series(False, index=resultaat.index)
     for col in resultaat.columns:
-        if col == "_dt":
+        if col == "_datum_dag":
             continue
         mask = mask | resultaat[col].astype(str).str.lower().str.contains(term, na=False)
     resultaat = resultaat[mask].copy()
@@ -93,11 +136,18 @@ for kolom in ["positie", "jaartal"]:
     if kolom in resultaat.columns:
         resultaat[kolom] = resultaat[kolom].str.replace(".0", "", regex=False)
 
-# sorteren op tijd als beschikbaar
-if not resultaat["_dt"].isna().all():
-    resultaat = resultaat.sort_values("_dt", ascending=True)
+# sorteer binnen dag op tijdsvak (starttijd), als dat lukt
+if not resultaat.empty and SLOT_COL in resultaat.columns:
+    starts = []
+    for tv in resultaat[SLOT_COL].tolist():
+        st_t, _ = parse_tijdsvak_start_end(tv)
+        starts.append(st_t)
+    resultaat["_starttijd"] = starts
+    if resultaat["_starttijd"].notna().any():
+        resultaat = resultaat.sort_values(["_starttijd"], ascending=True)
+    resultaat = resultaat.drop(columns=["_starttijd"], errors="ignore")
 
 resultaat = resultaat.reset_index(drop=True)
 
 st.write(f"Aantal resultaten: {len(resultaat)}")
-st.dataframe(resultaat.drop(columns=["_dt"], errors="ignore"), use_container_width=True, hide_index=True)
+st.dataframe(resultaat.drop(columns=["_datum_dag"], errors="ignore"), use_container_width=True, hide_index=True)
