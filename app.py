@@ -5,7 +5,7 @@ st.set_page_config(page_title="Top 2000 zoekapp", layout="wide")
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv("top2000.csv")
+    df = pd.read_csv("top2000.csv", sep=";")
     # alles naar tekst zodat zoeken altijd werkt
     for col in df.columns:
         df[col] = df[col].astype(str)
