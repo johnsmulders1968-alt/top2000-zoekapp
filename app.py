@@ -38,5 +38,5 @@ for kolom in ["positie", "jaartal"]:
             .str.replace(".0", "", regex=False)
         )
 
-st.dataframe(resultaat, use_container_width=True)
+st.dataframe(resultaat, use_container_width=True, hide_index=True)
 
