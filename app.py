@@ -27,4 +27,16 @@ else:
     resultaat = df
 
 st.write(f"Aantal resultaten: {len(resultaat)}")
+# index verbergen
+resultaat = resultaat.reset_index(drop=True)
+
+# positie en jaartal zonder decimalen (als ze bestaan)
+for kolom in ["positie", "jaartal"]:
+    if kolom in resultaat.columns:
+        resultaat[kolom] = (
+            resultaat[kolom]
+            .str.replace(".0", "", regex=False)
+        )
+
 st.dataframe(resultaat, use_container_width=True)
+
