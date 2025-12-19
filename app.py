@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from datetime import date
 
 st.set_page_config(page_title="Top 2000 zoekapp", layout="wide")
 
 CSV_FILE = "top2000.csv"
 CSV_SEP = ";"
+DATE_COL = "datum"
+SLOT_COL = "tijdsvak"
 
 def load_data():
     path = Path(CSV_FILE)
@@ -15,7 +16,7 @@ def load_data():
         st.stop()
     return pd.read_csv(path, sep=CSV_SEP, dtype=str, keep_default_na=False).fillna("")
 
-def norm_date_str(s: str) -> str:
+def norm_date_dmy(s: str) -> str:
     s = str(s).strip()
     if not s:
         return ""
@@ -24,95 +25,88 @@ def norm_date_str(s: str) -> str:
         return ""
     return dt.strftime("%d-%m-%Y")
 
-def to_date_obj(dmy: str):
-    dt = pd.to_datetime(dmy, errors="coerce", dayfirst=True)
-    if pd.isna(dt):
-        return None
-    return dt.date()
-
 df = load_data()
 
-DATE_COL = "datum"
-SLOT_COL = "tijdsvak"
-
 if DATE_COL not in df.columns or SLOT_COL not in df.columns:
-    st.error("Vereiste kolommen ontbreken: datum en/of tijdsvak")
+    st.error(f"Ik mis kolommen. Vereist: '{DATE_COL}' en '{SLOT_COL}'.")
     st.stop()
 
-df["_datum_dag"] = df[DATE_COL].apply(norm_date_str)
+# hulpkolom: datum als dd-mm-jjjj
+df["_datum_dag"] = df[DATE_COL].apply(norm_date_dmy)
 
-available_dmy = sorted([d for d in df["_datum_dag"].unique().tolist() if d])
-available_dates = [to_date_obj(d) for d in available_dmy]
-available_dates = [d for d in available_dates if d]
-
+# lijst met beschikbare datums (alleen datums die echt in je CSV zitten)
+available_dates = sorted([d for d in df["_datum_dag"].unique().tolist() if d])
 if not available_dates:
     st.error("Geen geldige datums gevonden in de CSV.")
     st.stop()
 
-DEFAULT_DATE = min(available_dates)
-
-# --- Session state defaults ---
-if "gekozen_datum" not in st.session_state:
-    st.session_state.gekozen_datum = DEFAULT_DATE
+# session state defaults
 if "zoekterm" not in st.session_state:
     st.session_state.zoekterm = ""
-if "tijdsvak" not in st.session_state:
-    st.session_state.tijdsvak = None
+if "gekozen_datum" not in st.session_state:
+    st.session_state.gekozen_datum = available_dates[0]
+if "gekozen_tijdsvak" not in st.session_state:
+    st.session_state.gekozen_tijdsvak = ""
 
-def reset_app():
-    st.session_state.gekozen_datum = DEFAULT_DATE
+def reset_naar_schema():
     st.session_state.zoekterm = ""
-    st.session_state.tijdsvak = None
+    st.session_state.gekozen_datum = available_dates[0]
+    st.session_state.gekozen_tijdsvak = ""
     st.rerun()
 
 st.title("Top 2000 – zoekapp")
 
 top_left, top_right = st.columns([6, 1])
 with top_left:
-    st.caption("Tip: gebruik Reset om weer terug te gaan naar Datum + Tijdsvak.")
+    st.caption("Zoeken is los van datum/tijdvak. Klik Reset om terug te gaan naar Datum + Tijdsvak.")
 with top_right:
-    st.button("Reset (F5)", on_click=reset_app)
+    st.button("Reset", on_click=reset_naar_schema)
 
-col1, col2, col3 = st.columns([1.2, 2.0, 1.2])
+st.caption(f"Bronbestand: {CSV_FILE}")
 
-with col1:
-    gekozen_datum = st.date_input("Datum", value=st.session_state.gekozen_datum, key="gekozen_datum")
+# zoekveld
+st.text_input("Zoek (alles doorzoekbaar)", key="zoekterm")
 
-with col3:
-    st.caption(f"Bronbestand: {CSV_FILE}")
-
-zoekterm = st.text_input("Zoek (alles doorzoekbaar)", key="zoekterm")
-
-# ALS er een zoekterm is: toon zoekresultaten over alles + melding + reset knop bovenin
-if zoekterm.strip():
+# als er een zoekterm is: toon alleen zoekresultaten (geen datum/tijdvak filtering)
+if st.session_state.zoekterm.strip():
     resultaat = df.copy()
 
-else:
-    gekozen_datum_str = gekozen_datum.strftime("%d-%m-%Y")
-    df_dag = df[df["_datum_dag"] == gekozen_datum_str].copy()
-
-    tijdsvakken = sorted([x for x in df_dag[SLOT_COL].unique().tolist() if str(x).strip()])
-
-    if tijdsvakken:
-        default_index = 0
-        if st.session_state.tijdsvak in tijdsvakken:
-            default_index = tijdsvakken.index(st.session_state.tijdsvak)
-
-        gekozen_tijdsvak = st.selectbox("Tijdsvak", tijdsvakken, index=default_index, key="tijdsvak")
-        resultaat = df_dag[df_dag[SLOT_COL].astype(str).str.strip() == str(gekozen_tijdsvak).strip()].copy()
-    else:
-        st.warning("Geen tijdsvakken gevonden voor deze datum.")
-        resultaat = df_dag.iloc[0:0].copy()
-
-# zoekfilter toepassen (alleen als zoekterm ingevuld)
-if zoekterm.strip():
-    term = zoekterm.lower()
+    term = st.session_state.zoekterm.lower()
     mask = pd.Series(False, index=resultaat.index)
     for col in resultaat.columns:
         if col == "_datum_dag":
             continue
         mask = mask | resultaat[col].astype(str).str.lower().str.contains(term, na=False)
     resultaat = resultaat[mask].copy()
+
+else:
+    # datum kiezen uit beschikbare datums (altijd raak)
+    gekozen_datum = st.selectbox(
+        "Datum",
+        available_dates,
+        index=available_dates.index(st.session_state.gekozen_datum) if st.session_state.gekozen_datum in available_dates else 0,
+        key="gekozen_datum",
+    )
+
+    df_dag = df[df["_datum_dag"] == gekozen_datum].copy()
+
+    tijdsvakken = sorted([x for x in df_dag[SLOT_COL].unique().tolist() if str(x).strip()])
+
+    if not tijdsvakken:
+        st.warning("Geen tijdsvakken gevonden voor deze datum.")
+        resultaat = df_dag.iloc[0:0].copy()
+    else:
+        if st.session_state.gekozen_tijdsvak not in tijdsvakken:
+            st.session_state.gekozen_tijdsvak = tijdsvakken[0]
+
+        gekozen_tijdsvak = st.selectbox(
+            "Tijdsvak",
+            tijdsvakken,
+            index=tijdsvakken.index(st.session_state.gekozen_tijdsvak),
+            key="gekozen_tijdsvak",
+        )
+
+        resultaat = df_dag[df_dag[SLOT_COL].astype(str).str.strip() == str(gekozen_tijdsvak).strip()].copy()
 
 # opschonen
 for kolom in ["positie", "jaartal"]:
