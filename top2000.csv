@@ -445,7 +445,7 @@
 2025-12-30 00:00:00;6.00 - 7.00;444;They;Don't Care About Us Michael Jackson;1996
 2025-12-30 00:00:00;5.00 - 6.00;445;De;Vlieger André Hazes;1977
 2025-12-30 00:00:00;5.00 - 6.00;446;Aan;De Kust (Live) BLØF;1998
-2025-12-30 00:00:00;5.00 - 6.00;447;Strawberry;Fields Forever The Beatles;1967
+2025-12-30 00:00:00;5.00 - 6.00;447;Strawberry Fields Forever;The Beatles;1967
 2025-12-30 00:00:00;5.00 - 6.00;448;The;Load Out / Stay  Jackson Browne;1977
 2025-12-30 00:00:00;5.00 - 6.00;449;Take;Me Home, Country Roads John Denver;1971
 2025-12-30 00:00:00;5.00 - 6.00;450;American;Pie  Don McLean;1972
@@ -699,7 +699,7 @@
 2025-12-29 00:00:00;8.00 - 9.00;698;Dog;Days Are Over Florence + The Machine;2009
 2025-12-29 00:00:00;7.00 - 8.00;699;Wonderful;Tonight Eric Clapton;1977
 2025-12-29 00:00:00;7.00 - 8.00;700;Halo;Of Flies Alice Cooper;1973
-2025-12-29 00:00:00;7.00 - 8.00;701;Fields Of Gold ;Eva Cassidy;1996
+2025-12-29 00:00:00;7.00 - 8.00;701;Fields Of Gold;Eva Cassidy;1996
 2025-12-29 00:00:00;7.00 - 8.00;702;Strange;Machines  The Gathering;1996
 2025-12-29 00:00:00;7.00 - 8.00;703;Ironic;Alanis Morissette;1996
 2025-12-29 00:00:00;7.00 - 8.00;704;Folsom;Prison Blues (Live) Johnny Cash;1968
@@ -2164,5 +2164,6 @@
 ;;;;;
 ;;;;;
 ;;;;;
+
 
 
